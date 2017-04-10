@@ -1,0 +1,105 @@
+---
+title: "Reproducible Research - Week 1 Project"
+author: "John Koegel"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Assignment
+1. Code for reading in the dataset and/or processing the data
+2. Histogram of the total number of steps taken each day
+3. Mean and median number of steps taken each day
+4. Time series plot of the average number of steps taken
+5. The 5-minute interval that, on average, contains the maximum number of steps
+6. Code to describe and show a strategy for imputing missing data
+7. Histogram of the total number of steps taken each day after missing values are imputed
+8. Panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends
+9. All of the R code needed to reproduce the results (numbers, plots, etc.) in the report
+
+## 1. Code for reading in the dataset and/or processing the data
+
+```{r}
+# Check Installed Packages, Install Necessary Packages, and Load Packages
+list.of.packages <- c("dplyr",'ggplot2','gridExtra','lubridate')
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+
+lapply(list.of.packages,library, character.only = TRUE)
+rm('list.of.packages','new.packages')
+
+# Set Working Directory
+setwd("~/Google Drive/Development/R/Coursera/Hopkins Data Science Specialization/Reproducible Research/Week 1 Project")
+dataDir <- paste(getwd(),"/data/",sep = "")
+# Download Data
+if (!file.exists(".data")) {
+        dir.create(dataDir)
+}
+
+rawDataURL <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+if (!file.exists(paste(dataDir,"/data.zip",sep=""))) {
+        download.file(rawDataURL, destfile = paste(dataDir,"/data.zip",sep=""), method= "auto")
+        unzip(zipfile=paste(dataDir,"/data.zip",sep=""),exdir = "data")
+}
+
+# Load activity data into table
+activity <- read.csv(paste(dataDir,"activity.csv", sep=""), header = TRUE)
+activityDfRAW <- tbl_df(activity)
+rm(activity)
+activityDf <- filter(activityDfRAW, !is.na(steps))
+
+activityDaily <- group_by(activityDf, date) %>% summarise(steps = sum(steps))
+```
+
+## 2. Histogram of the total number of steps taken each day
+
+```{r}
+hist(activityDaily$steps)
+```
+
+## 3. Mean and median number of steps taken each day
+
+```{r}
+activityDailySummary <- summarise(activityDaily,mean(steps), median(steps))
+activityDailySummary
+```
+## 4. Time series plot of the average number of steps taken
+```{r}
+activityDailyTS <- group_by(activityDf, date) %>% summarise(steps = mean(steps))
+ggplot(activityDailyTS) + geom_point(aes(activityDailyTS$date,activityDailyTS$steps))
+```
+
+## 5. The 5-minute interval that, on average, contains the maximum number of steps
+```{r}
+activity5Min <- group_by(activityDf, interval) %>% summarise(steps = mean(steps))
+filter(activity5Min, steps == max(activity5Min$steps))
+```
+
+## 6. Code to describe and show a strategy for imputing missing data
+Missing values should be filled in with the average values for that timeframe.
+```{r}
+activityDfNA <- filter(activityDfRAW, is.na(steps))
+activityDfNA <- full_join(activityDfNA,activity5Min, by = c("interval" = "interval")) %>% select(-steps.x) %>% mutate(steps = steps.y) %>% select(-steps.y)
+```
+
+## 7. Histogram of the total number of steps taken each day after missing values are imputed
+Imputed values merged back with clean data set, grouped, and then a histogram is created
+```{r}
+full <- rbind(activityDfNA, activityDf)
+fullActivityDaily <- group_by(full, date) %>% summarise(steps = sum(steps))
+hist(fullActivityDaily$steps)
+```
+## 8. Panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends
+```{r}
+# Determine Weekdays
+fullActivity5Min <- mutate(full, wDay = wday(date))
+weekendActivity5Min <- fullActivity5Min %>% filter(wDay ==1 | wDay == 7) %>% select(-wDay) %>% group_by(interval) %>% summarise(steps = mean(steps))
+wdayActivity5Min <- fullActivity5Min %>% filter(wDay != 1 & wDay != 7) %>% select(-wDay) %>% group_by(interval) %>% summarise(steps = mean(steps))
+
+myplot1<-ggplot(weekendActivity5Min, aes(interval, steps))+geom_point(color="firebrick") + ggtitle('Weekend Activity')
+myplot2<-ggplot(wdayActivity5Min, aes(interval, steps))+geom_point(color="olivedrab") + ggtitle('Week Activity')
+grid.arrange(myplot1, myplot2, ncol=2)
+```
+
